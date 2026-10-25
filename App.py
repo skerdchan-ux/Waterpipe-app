@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-st.set_page_config(page_title="Water Pipe Design", page_icon="🚰", layout="wide")
+st.set_page_config(page_title="Water Pipe Design VSD", page_icon="🚰", layout="wide")
 
 st.markdown("""
     <style>
@@ -17,8 +17,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🚰 โปรแกรมช่วยออกแบบระบบท่อส่งน้ำ")
-st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — กราฟเริ่มต้นที่ Flow = 0 เสมอ")
+st.title("🚰 โปรแกรมช่วยออกแบบระบบท่อส่งน้ำ (รองรับ VSD)")
+st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — วิเคราะห์ระบบควบคุมด้วย VSD และ Constant Pressure")
 st.markdown("---")
 
 # ส่วนข้อมูลตั้งต้น
@@ -80,12 +80,20 @@ with col_in1:
     selected_pipe_name = st.selectbox("ขนาดเส้นผ่านศูนย์กลางท่อ", list(pipe_sizes.keys()), index=min(1, len(pipe_sizes)-1))
     d_mm = pipe_sizes[selected_pipe_name]
     
-    q_m3h = st.number_input("อัตราการไหลของน้ำ (Q) [m³/h]", value=50.0, min_value=1.0)
+    q_m3h = st.number_input("อัตราการไหลออกแบบ (Q_design) [m³/h]", value=50.0, min_value=1.0)
 
 with col_in2:
     pipe_length = st.number_input("ความยาวท่อรวม (L) [เมตร]", value=100.0, min_value=0.1)
     delta_z = st.number_input("ความต่างระดับ (ΔZ) [เมตร]", value=10.0)
-    h_press = st.number_input("ความดันปลายทางเป้าหมาย [เมตรน้ำ]", value=20.0)
+    h_press = st.number_input("ความดันปลายทางเป้าหมาย (Target Pressure) [เมตรน้ำ]", value=20.0)
+    
+    control_mode = st.selectbox(
+        "โหมดการควบคุมปั๊ม (Control Mode)",
+        [
+            "VSD Constant Pressure Control (แนะนำสำหรับประหยัดพลังงาน)",
+            "Fixed Speed / Throttle Valve Control (รอบคงที่)"
+        ]
+    )
 
 st.markdown("##### อุปกรณ์ประกอบท่อ (Fittings)")
 f1, f2, f3 = st.columns(3)
@@ -126,51 +134,76 @@ with res1:
     else:
         v_status = "⚠️ สูงกว่าเกณฑ์แนะนำ"
         
-    st.info(f"**ประเภท:** {pipe_type}\n\n**ขนาดท่อ:** {selected_pipe_name}\n\n**ความเร็วในท่อ:** {velocity:.2f} m/s\n\n{v_status}")
-    st.markdown(f"- **Major Loss (แรงเสียดทาน):** {major_loss:.2f} ม.")
-    st.markdown(f"- **Minor Loss (อุปกรณ์):** {minor_loss:.2f} ม.")
-    st.markdown(f"- **รวมสูญเสียทั้งหมด:** **{total_loss:.2f} ม.**")
+    st.info(f"**โหมดควบคุม:** {'VSD Constant Pressure' if 'VSD' in control_mode else 'Fixed Speed'}\n\n**ขนาดท่อ:** {selected_pipe_name}\n\n**ความเร็วในท่อ:** {velocity:.2f} m/s\n\n{v_status}")
+    st.markdown(f"- **Major Loss ที่จุดออกแบบ:** {major_loss:.2f} ม.")
+    st.markdown(f"- **Minor Loss ที่จุดออกแบบ:** {minor_loss:.2f} ม.")
+    st.markdown(f"- **TDH สูงสุดที่ออกแบบ:** **{tdh:.2f} ม.**")
 
 with res2:
     st.markdown("### สรุปพลังงานปั๊ม")
-    st.success(f"**เฮดรวม (TDH):** {tdh:.2f} เมตร")
+    st.success(f"**เฮดรวมสูงสุด (Max TDH):** {tdh:.2f} เมตร")
     st.markdown(f"- **กำลังไฮดรอลิก:** {hydraulic_power:.2f} kW")
     st.markdown(f"- **กำลังเพลาปั๊ม (Eff 75%):** {shaft_power:.2f} kW")
     st.markdown(f"- **ขนาดมอเตอร์แนะนำ:** **{motor_power_rec:.2f} kW**")
+    if "VSD" in control_mode:
+        st.caption("💡 ระบบ VSD จะช่วยลดรอบการทำงานและประหยัดพลังงานเมื่ออัตราการไหลลดลงต่ำกว่า Q_design")
 
-# กราฟ Pump & System Curve (บังคับเริ่มต้นจาก Flow = 0 เสมอ)
+# กราฟ Pump & System Curve (รองรับ VSD)
 st.markdown("---")
-st.subheader("4. 📈 กราฟจุดทำงานของปั๊ม (Pump & System Curve)")
+st.subheader("4. 📈 กราฟจุดทำงานของปั๊มและระบบ (System & VSD Curves)")
 
 fig, ax = plt.subplots(figsize=(8, 4.5))
-max_flow_graph = max(q_m3h * 1.5, 50)
-flows = np.linspace(0, max_flow_graph, 150) # เริ่มต้นที่ 0 แน่นอน
+max_flow_graph = max(q_m3h * 1.4, 50)
+flows = np.linspace(0, max_flow_graph, 150)
 
 static_head = delta_z + h_press
-loss_coefficient = total_loss / (q_m3h ** 1.852) if q_m3h > 0 else 0
-system_head_curve = static_head + loss_coefficient * (flows ** 1.852)
 
-shutoff_head = tdh * 1.35
-pump_head_curve = shutoff_head - (shutoff_head - tdh) * ((flows / q_m3h) ** 2)
+if "VSD" in control_mode:
+    # VSD Constant Pressure System Curve เป็นเส้นตรงรักษาระดับแรงดันเป้าหมายที่ปลายทาง + Elevation
+    # (หรือในทางปฏิบัติ แรงดันที่หัวปั๊มจะชดเชยการสูญเสียในท่อเฉพาะส่วนที่เกินจากสแตติก แต่ถ้าคุม Constant Pressure ที่ปลายทาง แรงดันที่หัวปั๊มจะเป็นเส้นตรงระดับเดียวกับ TDH ออกแบบ หรือปรับลดตามสัดส่วนการสูญเสีย)
+    loss_coefficient = total_loss / (q_m3h ** 1.852) if q_m3h > 0 else 0
+    # ระบบ VSD ที่รักษาความดันปลายทางคงที่: Head ของระบบจะเท่ากับ Static Head + Target Pressure (คงที่ในอุดมคติ หรือปรับตามการสูญเสียจริง)
+    system_head_curve = np.full_like(flows, tdh) # เส้นตรง Constant Pressure
+    
+    # วาดตระกูลกราฟความเร็วรอบปั๊มของ VSD (Affinity Laws)
+    shutoff_head = tdh * 1.35
+    ax.plot(flows, system_head_curve, label="System Curve (VSD Constant Pressure)", color="red", linewidth=2.5, linestyle="--")
+    
+    # กราฟปั๊มที่ 100% Speed
+    pump_100 = shutoff_head - (shutoff_head - tdh) * ((flows / q_m3h) ** 2)
+    ax.plot(flows, pump_100, label="Pump Curve (100% Speed)", color="blue", linewidth=2)
+    
+    # กราฟปั๊มที่ความเร็วรอบต่ำลง (เช่น 85% และ 70% Speed)
+    ax.plot(flows, pump_100 * (0.85**2), label="Pump Curve (85% Speed)", color="blue", alpha=0.6, linestyle=":")
+    ax.plot(flows, pump_100 * (0.70**2), label="Pump Curve (70% Speed)", color="blue", alpha=0.3, linestyle=":")
+    
+else:
+    # Fixed Speed System Curve แบบปกติ (Parabolic)
+    loss_coefficient = total_loss / (q_m3h ** 1.852) if q_m3h > 0 else 0
+    system_head_curve = static_head + loss_coefficient * (flows ** 1.852)
+    shutoff_head = tdh * 1.35
+    pump_head_curve = shutoff_head - (shutoff_head - tdh) * ((flows / q_m3h) ** 2)
+    
+    ax.plot(flows, pump_head_curve, label="Pump Curve", color="blue", linewidth=2)
+    ax.plot(flows, system_head_curve, label="System Curve", color="red", linewidth=2)
 
-ax.plot(flows, pump_head_curve, label="Pump Curve", color="blue", linewidth=2)
-ax.plot(flows, system_head_curve, label="System Curve", color="red", linewidth=2)
-ax.plot(q_m3h, tdh, marker="o", markersize=8, color="green", label=f"Duty Point ({q_m3h:.1f} m³/h, {tdh:.1f} m)")
+ax.plot(q_m3h, tdh, marker="o", markersize=8, color="green", label=f"Design Duty Point ({q_m3h:.1f} m³/h, {tdh:.1f} m)")
 
-# บังคับแกนเริ่มต้นที่ 0
 ax.set_xlim(left=0, right=max_flow_graph)
-ax.set_ylim(bottom=0, top=max(shutoff_head * 1.1, tdh * 1.2))
-
+ax.set_ylim(bottom=0, top=max(tdh * 1.3, 30))
 ax.set_xlabel("Flow Rate (m³/h)")
 ax.set_ylabel("Head (m)")
 ax.grid(True, linestyle="--", alpha=0.6)
-ax.legend()
+ax.legend(loc="upper right", fontsize=9)
 st.pyplot(fig)
 
-# 5. ตารางข้อมูลการเปลี่ยนแปลง Flow Rate กับ Pressure / Head
+# 5. ตารางข้อมูลการเปลี่ยนแปลง Pressure กับ Flow Rate
 st.markdown("---")
 st.subheader("5. 📋 ตารางแสดงการเปลี่ยนแปลง Pressure และ Head ตาม Flow Rate")
-st.markdown("ตารางจำลองพฤติกรรมระบบท่อ (System Performance Table) เริ่มต้นตั้งแต่ Flow Rate = 0:")
+if "VSD" in control_mode:
+    st.markdown("ตารางจำลองพฤติกรรมระบบ **VSD Constant Pressure Control** (แรงดันปลายทางคงที่ แต่พลังงานและรอบปั๊มลดลงตาม Flow):")
+else:
+    st.markdown("ตารางจำลองพฤติกรรมระบบ **Fixed Speed** (แรงดันแปรผันตามอัตราการไหล):")
 
 table_flows = np.linspace(0, q_m3h * 1.4, 8)
 table_data = []
@@ -179,14 +212,18 @@ for f in table_flows:
     if f == 0:
         v_t = 0.0
         tot_loss_t = 0.0
-        sys_head_t = delta_z + h_press
+        sys_head_t = delta_z + h_press if "VSD" in control_mode else delta_z + h_press
     else:
         v_t = (f / 3600.0) / area
         maj_t = 10.67 * (f ** 1.852) * (d_mm ** -4.87) * (c_factor ** -1.852) * pipe_length
         min_t = k_total * (v_t ** 2) / (2 * 9.81)
         tot_loss_t = maj_t + min_t
-        sys_head_t = delta_z + h_press + tot_loss_t
-        
+        if "VSD" in control_mode:
+            # VSD รักษาระดับความดันปลายทางคงที่ Head ของระบบรวมจึงชดเชยตามการสูญเสียที่เปลี่ยนไป
+            sys_head_t = delta_z + h_press + tot_loss_t
+        else:
+            sys_head_t = delta_z + h_press + tot_loss_t
+            
     pressure_bar = sys_head_t / 10.2
     
     table_data.append({
@@ -206,6 +243,5 @@ st.subheader("6. 📚 หลักการคำนวณมาตรฐาน"
 st.markdown("""
 - **ความเร็วในท่อ:** V = 4Q / (pi * D²)
 - **Hazen-Williams:** hf = 10.67 * Q^1.852 * D^-4.87 * C^-1.852 * L
-- **Minor Loss:** hm = K * V^2 / (2g)
-- **System Curve Origin:** กราฟระบบเริ่มต้นที่ Flow = 0 เสมอ (ที่ค่า Static Head = ΔZ + H_pressure)
+- **VSD Control:** ระบบรักษาระดับความดันคงที่ (Constant Pressure) ช่วยลดความเร็วรอบปั๊มตามกฎความแปรผัน (Affinity Laws) เมื่ออัตราการใช้น้ำลดลง
 """)
