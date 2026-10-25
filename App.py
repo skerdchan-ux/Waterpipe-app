@@ -18,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🚰 โปรแกรมช่วยออกแบบระบบท่อส่งน้ำ")
-st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — วิเคราะห์ System Curve และการเปลี่ยนแปลง Pressure")
+st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — วิเคราะห์ System Curve เริ่มต้นจาก Flow = 0")
 st.markdown("---")
 
 # ส่วนข้อมูลตั้งต้น
@@ -109,7 +109,7 @@ with res2:
     st.markdown(f"- **กำลังเพลาปั๊ม (Eff 75%):** {shaft_power:.2f} kW")
     st.markdown(f"- **ขนาดมอเตอร์แนะนำ:** **{motor_power_rec:.2f} kW**")
 
-# กราฟ Pump & System Curve
+# กราฟ Pump & System Curve (เริ่มต้นจาก Flow = 0)
 st.markdown("---")
 st.subheader("4. 📈 กราฟจุดทำงานของปั๊ม (Pump & System Curve)")
 
@@ -136,22 +136,26 @@ ax.grid(True, linestyle="--", alpha=0.6)
 ax.legend()
 st.pyplot(fig)
 
-# 5. ตารางข้อมูลการเปลี่ยนแปลง Flow Rate กับ Pressure / Head
+# 5. ตารางข้อมูลการเปลี่ยนแปลง Flow Rate กับ Pressure / Head (เริ่มต้นจาก Flow = 0)
 st.markdown("---")
 st.subheader("5. 📋 ตารางแสดงการเปลี่ยนแปลง Pressure และ Head ตาม Flow Rate")
-st.markdown("ตารางจำลองพฤติกรรมระบบท่อ (System Performance Table) เมื่ออัตราการไหลเปลี่ยนแปลง:")
+st.markdown("ตารางจำลองพฤติกรรมระบบท่อ (System Performance Table) เริ่มต้นตั้งแต่ Flow Rate = 0:")
 
-table_flows = np.linspace(q_m3h * 0.2, q_m3h * 1.4, 7)
+table_flows = np.linspace(0, q_m3h * 1.4, 8)
 table_data = []
 
 for f in table_flows:
-    # คำนวณความเร็วและ Head loss ที่ Flow นั้นๆ
-    v_t = (f / 3600.0) / area
-    maj_t = 10.67 * (f ** 1.852) * (d_mm ** -4.87) * (c_factor ** -1.852) * pipe_length
-    min_t = k_total * (v_t ** 2) / (2 * 9.81)
-    tot_loss_t = maj_t + min_t
-    sys_head_t = delta_z + h_press + tot_loss_t
-    # แปลง Head เป็น Pressure คร่าวๆ (Bar) โดยสมมติให้ 10.2 เมตรน้ำ = 1 Bar
+    if f == 0:
+        v_t = 0.0
+        tot_loss_t = 0.0
+        sys_head_t = delta_z + h_press
+    else:
+        v_t = (f / 3600.0) / area
+        maj_t = 10.67 * (f ** 1.852) * (d_mm ** -4.87) * (c_factor ** -1.852) * pipe_length
+        min_t = k_total * (v_t ** 2) / (2 * 9.81)
+        tot_loss_t = maj_t + min_t
+        sys_head_t = delta_z + h_press + tot_loss_t
+        
     pressure_bar = sys_head_t / 10.2
     
     table_data.append({
@@ -172,5 +176,5 @@ st.markdown("""
 - **ความเร็วในท่อ:** V = 4Q / (pi * D²)
 - **Hazen-Williams:** hf = 10.67 * Q^1.852 * D^-4.87 * C^-1.852 * L
 - **Minor Loss:** hm = K * V^2 / (2g)
-- **TDH & Pressure Variation:** แสดงความสัมพันธ์เชิงพลวัตระหว่างอัตราการไหลและการสูญเสียพลังงานในระบบ
+- **TDH & Pressure Variation:** แสดงความสัมพันธ์เชิงพลวัตเริ่มต้นจากอัตราการไหลเป็นศูนย์ (Flow = 0)
 """)
