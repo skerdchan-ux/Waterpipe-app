@@ -18,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🚰 โปรแกรมช่วยออกแบบระบบท่อส่งน้ำ")
-st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — วิเคราะห์ System Curve เริ่มต้นจาก Flow = 0")
+st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — กราฟเริ่มต้นที่ Flow = 0 เสมอ")
 st.markdown("---")
 
 # ส่วนข้อมูลตั้งต้น
@@ -26,30 +26,59 @@ st.subheader("1. ⚙️ ข้อมูลตั้งต้นระบบ (Inp
 col_in1, col_in2 = st.columns(2)
 
 with col_in1:
-    pipe_materials = {
-        "ท่อเหล็ก (Steel Pipe - C=120)": 120,
-        "สแตนเลส (SS304 - C=150)": 150,
-        "PVC (C=140)": 140,
-        "HDPE (C=130)": 130
-    }
-    selected_material = st.selectbox("ชนิดและวัสดุของท่อ", list(pipe_materials.keys()))
-    c_factor = pipe_materials[selected_material]
+    pipe_type = st.selectbox(
+        "เลือกประเภทท่อ / วัสดุ", 
+        [
+            "ท่อเหล็กทั่วไป (Steel Pipe - C=120)", 
+            "ท่อ Sanitary (Stainless SMS/DIN - C=150)",
+            "สแตนเลสงานระบบทั่วไป (SS304 - C=150)",
+            "PVC (C=140)", 
+            "HDPE (C=130)"
+        ]
+    )
     
-    steel_pipe_sizes = {
-        "2 นิ้ว (ID: 52.5 มม.)": 52.5,
-        "2.5 นิ้ว (ID: 62.7 มม.)": 62.7,
-        "3 นิ้ว (ID: 77.9 มม.)": 77.9,
-        "4 นิ้ว (ID: 102.3 มม.)": 102.3,
-        "6 นิ้ว (ID: 154.1 มม.)": 154.1,
-        "8 นิ้ว (ID: 202.7 มม.)": 202.7,
-        "10 นิ้ว (ID: 254.5 มม.)": 254.5,
-        "12 นิ้ว (ID: 303.2 มม.)": 303.2,
-        "14 นิ้ว (ID: 333.3 มม.)": 333.3,
-        "16 นิ้ว (ID: 381.0 มม.)": 381.0
-    }
-    
-    selected_pipe_name = st.selectbox("ขนาดเส้นผ่านศูนย์กลางท่อ (2 - 16 นิ้ว)", list(steel_pipe_sizes.keys()), index=2)
-    d_mm = steel_pipe_sizes[selected_pipe_name]
+    if "ท่อเหล็กทั่วไป" in pipe_type:
+        c_factor = 120
+        pipe_sizes = {
+            "2 นิ้ว (ID: 52.5 มม.)": 52.5,
+            "2.5 นิ้ว (ID: 62.7 มม.)": 62.7,
+            "3 นิ้ว (ID: 77.9 มม.)": 77.9,
+            "4 นิ้ว (ID: 102.3 มม.)": 102.3,
+            "6 นิ้ว (ID: 154.1 มม.)": 154.1,
+            "8 นิ้ว (ID: 202.7 มม.)": 202.7,
+            "10 นิ้ว (ID: 254.5 มม.)": 254.5,
+            "12 นิ้ว (ID: 303.2 มม.)": 303.2,
+            "14 นิ้ว (ID: 333.3 มม.)": 333.3,
+            "16 นิ้ว (ID: 381.0 มม.)": 381.0
+        }
+    elif "Sanitary" in pipe_type:
+        c_factor = 150
+        pipe_sizes = {
+            "1.5 นิ้ว Sanitary (ID: 35.6 มม.)": 35.6,
+            "2 นิ้ว Sanitary (ID: 47.6 มม.)": 47.6,
+            "2.5 นิ้ว Sanitary (ID: 60.2 มม.)": 60.2,
+            "3 นิ้ว Sanitary (ID: 72.3 มม.)": 72.3,
+            "4 นิ้ว Sanitary (ID: 97.4 มม.)": 97.4,
+            "6 นิ้ว Sanitary (ID: 146.8 มม.)": 146.8,
+            "8 นิ้ว Sanitary (ID: 194.7 มม.)": 194.7,
+            "10 นิ้ว Sanitary (ID: 243.8 มม.)": 243.8,
+            "12 นิ้ว Sanitary (ID: 292.1 มม.)": 292.1
+        }
+    else:
+        c_factor = 150 if "สแตนเลส" in pipe_type else (140 if "PVC" in pipe_type else 130)
+        pipe_sizes = {
+            "2 นิ้ว (ID: 54.8 มม.)": 54.8,
+            "2.5 นิ้ว (ID: 62.7 มม.)": 62.7,
+            "3 นิ้ว (ID: 77.9 มม.)": 77.9,
+            "4 นิ้ว (ID: 102.2 มม.)": 102.2,
+            "6 นิ้ว (ID: 154.1 มม.)": 154.1,
+            "8 นิ้ว (ID: 202.7 มม.)": 202.7,
+            "10 นิ้ว (ID: 254.5 มม.)": 254.5,
+            "12 นิ้ว (ID: 303.2 มม.)": 303.2
+        }
+
+    selected_pipe_name = st.selectbox("ขนาดเส้นผ่านศูนย์กลางท่อ", list(pipe_sizes.keys()), index=min(1, len(pipe_sizes)-1))
+    d_mm = pipe_sizes[selected_pipe_name]
     
     q_m3h = st.number_input("อัตราการไหลของน้ำ (Q) [m³/h]", value=50.0, min_value=1.0)
 
@@ -97,7 +126,7 @@ with res1:
     else:
         v_status = "⚠️ สูงกว่าเกณฑ์แนะนำ"
         
-    st.info(f"**ท่อที่เลือก:** {selected_pipe_name}\n\n**ความเร็วในท่อ:** {velocity:.2f} m/s\n\n{v_status}")
+    st.info(f"**ประเภท:** {pipe_type}\n\n**ขนาดท่อ:** {selected_pipe_name}\n\n**ความเร็วในท่อ:** {velocity:.2f} m/s\n\n{v_status}")
     st.markdown(f"- **Major Loss (แรงเสียดทาน):** {major_loss:.2f} ม.")
     st.markdown(f"- **Minor Loss (อุปกรณ์):** {minor_loss:.2f} ม.")
     st.markdown(f"- **รวมสูญเสียทั้งหมด:** **{total_loss:.2f} ม.**")
@@ -109,13 +138,13 @@ with res2:
     st.markdown(f"- **กำลังเพลาปั๊ม (Eff 75%):** {shaft_power:.2f} kW")
     st.markdown(f"- **ขนาดมอเตอร์แนะนำ:** **{motor_power_rec:.2f} kW**")
 
-# กราฟ Pump & System Curve (เริ่มต้นจาก Flow = 0)
+# กราฟ Pump & System Curve (บังคับเริ่มต้นจาก Flow = 0 เสมอ)
 st.markdown("---")
 st.subheader("4. 📈 กราฟจุดทำงานของปั๊ม (Pump & System Curve)")
 
 fig, ax = plt.subplots(figsize=(8, 4.5))
 max_flow_graph = max(q_m3h * 1.5, 50)
-flows = np.linspace(0, max_flow_graph, 100)
+flows = np.linspace(0, max_flow_graph, 150) # เริ่มต้นที่ 0 แน่นอน
 
 static_head = delta_z + h_press
 loss_coefficient = total_loss / (q_m3h ** 1.852) if q_m3h > 0 else 0
@@ -128,15 +157,17 @@ ax.plot(flows, pump_head_curve, label="Pump Curve", color="blue", linewidth=2)
 ax.plot(flows, system_head_curve, label="System Curve", color="red", linewidth=2)
 ax.plot(q_m3h, tdh, marker="o", markersize=8, color="green", label=f"Duty Point ({q_m3h:.1f} m³/h, {tdh:.1f} m)")
 
-ax.set_xlim(left=0)
-ax.set_ylim(bottom=0)
+# บังคับแกนเริ่มต้นที่ 0
+ax.set_xlim(left=0, right=max_flow_graph)
+ax.set_ylim(bottom=0, top=max(shutoff_head * 1.1, tdh * 1.2))
+
 ax.set_xlabel("Flow Rate (m³/h)")
 ax.set_ylabel("Head (m)")
 ax.grid(True, linestyle="--", alpha=0.6)
 ax.legend()
 st.pyplot(fig)
 
-# 5. ตารางข้อมูลการเปลี่ยนแปลง Flow Rate กับ Pressure / Head (เริ่มต้นจาก Flow = 0)
+# 5. ตารางข้อมูลการเปลี่ยนแปลง Flow Rate กับ Pressure / Head
 st.markdown("---")
 st.subheader("5. 📋 ตารางแสดงการเปลี่ยนแปลง Pressure และ Head ตาม Flow Rate")
 st.markdown("ตารางจำลองพฤติกรรมระบบท่อ (System Performance Table) เริ่มต้นตั้งแต่ Flow Rate = 0:")
@@ -176,5 +207,5 @@ st.markdown("""
 - **ความเร็วในท่อ:** V = 4Q / (pi * D²)
 - **Hazen-Williams:** hf = 10.67 * Q^1.852 * D^-4.87 * C^-1.852 * L
 - **Minor Loss:** hm = K * V^2 / (2g)
-- **TDH & Pressure Variation:** แสดงความสัมพันธ์เชิงพลวัตเริ่มต้นจากอัตราการไหลเป็นศูนย์ (Flow = 0)
+- **System Curve Origin:** กราฟระบบเริ่มต้นที่ Flow = 0 เสมอ (ที่ค่า Static Head = ΔZ + H_pressure)
 """)
