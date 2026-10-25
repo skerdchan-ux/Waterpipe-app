@@ -18,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🚰 โปรแกรมช่วยออกแบบระบบท่อส่งน้ำ (รองรับ VSD)")
-st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — กำหนดค่าความดันควบคุมสำหรับ VSD ได้ตามต้องการ")
+st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — กราฟเส้นประ VSD ตรงกับค่าความดันเป้าหมายที่ตั้งไว้")
 st.markdown("---")
 
 # ส่วนข้อมูลตั้งต้น
@@ -80,7 +80,7 @@ with col_in1:
     selected_pipe_name = st.selectbox("ขนาดเส้นผ่านศูนย์กลางท่อ", list(pipe_sizes.keys()), index=min(1, len(pipe_sizes)-1))
     d_mm = pipe_sizes[selected_pipe_name]
     
-    q_m3h = st.number_input("อัตราการไหลออกแบบ (Q_design) [m³/h]", value=50.0, min_value=1.0)
+    q_m3h = st.number_input("อัตราการไหลออกแบบ (Q_design) [m³/h]", value=35.0, min_value=1.0)
 
 with col_in2:
     pipe_length = st.number_input("ความยาวท่อรวม (L) [เมตร]", value=100.0, min_value=0.1)
@@ -95,7 +95,7 @@ with col_in2:
     )
     
     if "VSD" in control_mode:
-        h_press = st.number_input("🎯 ค่าความดันเป้าหมายที่ต้องการควบคุม (VSD Target Pressure) [เมตรน้ำ]", value=25.0, min_value=0.0)
+        h_press = st.number_input("🎯 ค่าความดันเป้าหมายที่ต้องการควบคุม (VSD Target Pressure) [เมตรน้ำ]", value=22.0, min_value=0.0)
     else:
         h_press = st.number_input("ความดันปลายทางเป้าหมาย [เมตรน้ำ]", value=20.0, min_value=0.0)
 
@@ -118,7 +118,14 @@ major_loss = 10.67 * (q_m3h ** 1.852) * (d_mm ** -4.87) * (c_factor ** -1.852) *
 k_total = (elbow_90 * 0.9) + (valve * 0.2) + (tee * 1.0)
 minor_loss = k_total * (velocity ** 2) / (2 * 9.81)
 total_loss = major_loss + minor_loss
-tdh = delta_z + h_press + total_loss
+
+if "VSD" in control_mode:
+    # ในระบบ VSD Constant Pressure ที่ปลายทาง หัวปั๊มต้องจ่าย Head เท่ากับ ΔZ + H_target + Head Loss ในท่อ
+    tdh = delta_z + h_press + total_loss
+    vsd_target_head = delta_z + h_press # ระดับเส้นประสีแดงที่จะแสดง (Static + Target Pressure)
+else:
+    tdh = delta_z + h_press + total_loss
+    vsd_target_head = tdh
 
 rho, g = 1000.0, 9.81
 hydraulic_power = (rho * g * (q_m3h / 3600.0) * tdh) / 1000.0
@@ -152,7 +159,7 @@ with res2:
     if "VSD" in control_mode:
         st.caption(f"💡 ควบคุมความดันปลายทางคงที่ที่ระดับ {h_press} เมตรน้ำ ด้วยระบบ VSD")
 
-# กราฟ Pump & System Curve (รองรับ VSD ตั้งค่า Pressure ได้)
+# กราฟ Pump & System Curve (แก้ไขเส้นประ VSD ให้ตรงกับค่าที่ตั้งไว้)
 st.markdown("---")
 st.subheader("4. 📈 กราฟจุดทำงานของปั๊มและระบบ (System & VSD Curves)")
 
@@ -160,18 +167,18 @@ fig, ax = plt.subplots(figsize=(8, 4.5))
 max_flow_graph = max(q_m3h * 1.4, 50)
 flows = np.linspace(0, max_flow_graph, 150)
 
-static_head = delta_z + h_press
-
 if "VSD" in control_mode:
-    system_head_curve = np.full_like(flows, tdh) # เส้นตรง Constant Pressure ตามค่าที่ผู้ใช้ตั้ง
+    # เส้นประสีแดงแสดงระดับ Static Head + Target Pressure ตามที่ผู้ใช้กรอก
+    system_head_curve = np.full_like(flows, vsd_target_head)
     shutoff_head = tdh * 1.35
-    ax.plot(flows, system_head_curve, label=f"VSD Target Pressure ({h_press} m)", color="red", linewidth=2.5, linestyle="--")
+    ax.plot(flows, system_head_curve, label=f"VSD Target Pressure ({delta_z} + {h_press} = {vsd_target_head} m)", color="red", linewidth=2.5, linestyle="--")
     
     pump_100 = shutoff_head - (shutoff_head - tdh) * ((flows / q_m3h) ** 2)
     ax.plot(flows, pump_100, label="Pump Curve (100% Speed)", color="blue", linewidth=2)
     ax.plot(flows, pump_100 * (0.85**2), label="Pump Curve (85% Speed)", color="blue", alpha=0.6, linestyle=":")
     ax.plot(flows, pump_100 * (0.70**2), label="Pump Curve (70% Speed)", color="blue", alpha=0.3, linestyle=":")
 else:
+    static_head = delta_z + h_press
     loss_coefficient = total_loss / (q_m3h ** 1.852) if q_m3h > 0 else 0
     system_head_curve = static_head + loss_coefficient * (flows ** 1.852)
     shutoff_head = tdh * 1.35
@@ -201,7 +208,7 @@ for f in table_flows:
     if f == 0:
         v_t = 0.0
         tot_loss_t = 0.0
-        sys_head_t = delta_z + h_press
+        sys_head_t = delta_z + h_press if "VSD" in control_mode else delta_z + h_press
     else:
         v_t = (f / 3600.0) / area
         maj_t = 10.67 * (f ** 1.852) * (d_mm ** -4.87) * (c_factor ** -1.852) * pipe_length
@@ -231,5 +238,5 @@ st.subheader("6. 📚 หลักการคำนวณมาตรฐาน"
 st.markdown("""
 - **ความเร็วในท่อ:** V = 4Q / (pi * D²)
 - **Hazen-Williams:** hf = 10.67 * Q^1.852 * D^-4.87 * C^-1.852 * L
-- **VSD Target Pressure:** ผู้ใช้สามารถกำหนดค่าความดันเป้าหมายในการควบคุมระบบ (Constant Pressure Control) ได้ตามโจทย์หน้างานจริง
+- **VSD Target Pressure:** เส้นประแสดงค่าความดันเป้าหมายรวมกับความต่างระดับ ($\Delta Z + H_{\text{target}}$) อย่างถูกต้องตรงตามค่าที่ตั้งไว้
 """)
