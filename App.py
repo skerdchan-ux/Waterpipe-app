@@ -31,10 +31,9 @@ with col_in1:
         "PVC (C=140)": 140,
         "HDPE (C=130)": 130
     }
-    selected_material = st.sidebar.selectbox if False else st.selectbox("ชนิดและวัสดุของท่อ", list(pipe_materials.keys()))
+    selected_material = st.selectbox("ชนิดและวัสดุของท่อ", list(pipe_materials.keys()))
     c_factor = pipe_materials[selected_material]
     
-    # รายการขนาดท่อ 2 ถึง 16 นิ้ว (อ้างอิงเส้นผ่านศูนย์กลางภายใน ID โดยประมาณสำหรับท่อเหล็กมาตรฐาน / ชสล.)
     steel_pipe_sizes = {
         "2 นิ้ว (ID: 52.5 มม.)": 52.5,
         "2.5 นิ้ว (ID: 62.7 มม.)": 62.7,
@@ -51,10 +50,10 @@ with col_in1:
     selected_pipe_name = st.selectbox("ขนาดเส้นผ่านศูนย์กลางท่อ (2 - 16 นิ้ว)", list(steel_pipe_sizes.keys()), index=2)
     d_mm = steel_pipe_sizes[selected_pipe_name]
     
-    q_m3h = st.number_input("อัตราการไหลของน้ำ (Q) [m³/h]", value=100.0)
+    q_m3h = st.number_input("อัตราการไหลของน้ำ (Q) [m³/h]", value=50.0, min_value=1.0)
 
 with col_in2:
-    pipe_length = st.number_input("ความยาวท่อรวม (L) [เมตร]", value=200.0)
+    pipe_length = st.number_input("ความยาวท่อรวม (L) [เมตร]", value=100.0, min_value=0.1)
     delta_z = st.number_input("ความต่างระดับ (ΔZ) [เมตร]", value=10.0)
     h_press = st.number_input("ความดันปลายทาง [เมตรน้ำ]", value=20.0)
 
@@ -69,7 +68,7 @@ with f3:
 
 st.markdown("---")
 
-# คำนวณทางวิศวกรรม
+# คำนวณทางวิศวกรรมที่ Duty Point
 d_m = d_mm / 1000.0
 area = np.pi * (d_m ** 2) / 4.0
 velocity = (q_m3h / 3600.0) / area
@@ -90,8 +89,6 @@ res1, res2 = st.columns(2)
 
 with res1:
     st.markdown("### ข้อมูลท่อและการสูญเสีย")
-    
-    # เช็คเกณฑ์ความเร็ว
     if 1.0 <= velocity <= 2.0:
         v_status = "✅ อยู่ในช่วงแนะนำ (1.0 - 2.0 m/s)"
     elif velocity < 1.0:
@@ -111,17 +108,32 @@ with res2:
     st.markdown(f"- **กำลังเพลาปั๊ม (Eff 75%):** {shaft_power:.2f} kW")
     st.markdown(f"- **ขนาดมอเตอร์แนะนำ:** **{motor_power_rec:.2f} kW**")
 
-# กราฟ
+# กราฟ (แก้ไขสมการ System & Pump Curve ให้ถูกต้องตามหลักฟิสิกส์)
 st.markdown("---")
 st.subheader("4. 📈 กราฟจุดทำงานของปั๊ม (Pump & System Curve)")
-fig, ax = plt.subplots(figsize=(8, 4))
-flows = np.linspace(1, max(q_m3h * 1.6, 120), 50)
-pump_head_curve = (tdh * 1.4) - 0.003 * (flows ** 2)
-system_head_curve = delta_z + h_press + (total_loss / (q_m3h ** 2)) * (flows ** 2)
+
+fig, ax = plt.subplots(figsize=(8, 4.5))
+max_flow_graph = max(q_m3h * 1.5, 50)
+flows = np.linspace(0, max_flow_graph, 100)
+
+# Static Head (ΔZ + H_pressure)
+static_head = delta_z + h_press
+
+# System Curve: H_system = Static Head + k * Q^1.852 (อิงตามสัดส่วนการสูญเสียที่ Q ปัจจุบัน)
+loss_coefficient = total_loss / (q_m3h ** 1.852) if q_m3h > 0 else 0
+system_head_curve = static_head + loss_coefficient * (flows ** 1.852)
+
+# Pump Curve: จำลองกราฟปั๊มให้ผ่านจุด Duty Point (q_m3h, tdh) พอดี
+# สมมติให้ Shut-off head อยู่ที่ประมาณ 1.3 ถึง 1.4 เท่าของ TDH
+shutoff_head = tdh * 1.35
+pump_head_curve = shutoff_head - (shutoff_head - tdh) * ((flows / q_m3h) ** 2)
 
 ax.plot(flows, pump_head_curve, label="Pump Curve", color="blue", linewidth=2)
 ax.plot(flows, system_head_curve, label="System Curve", color="red", linewidth=2)
-ax.plot(q_m3h, tdh, marker="o", markersize=8, color="green", label=f"Duty Point ({q_m3h} m³/h, {tdh:.1f} m)")
+ax.plot(q_m3h, tdh, marker="o", markersize=8, color="green", label=f"Duty Point ({q_m3h:.1f} m³/h, {tdh:.1f} m)")
+
+ax.set_xlim(left=0)
+ax.set_ylim(bottom=0)
 ax.set_xlabel("Flow Rate (m³/h)")
 ax.set_ylabel("Head (m)")
 ax.grid(True, linestyle="--", alpha=0.6)
@@ -133,7 +145,7 @@ st.markdown("---")
 st.subheader("6. 📚 หลักการคำนวณมาตรฐาน")
 st.markdown("""
 - **ความเร็วในท่อ:** V = 4Q / (pi * D²)
-- **Hazen-Williams (รองรับท่อเหล็ก C=120):** hf = 10.67 * Q^1.852 * D^-4.87 * C^-1.852 * L
+- **Hazen-Williams:** hf = 10.67 * Q^1.852 * D^-4.87 * C^-1.852 * L
 - **Minor Loss:** hm = K * V^2 / (2g)
 - **TDH:** ΔZ + H_pressure + hf + hm
 """)
