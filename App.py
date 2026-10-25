@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 st.set_page_config(page_title="Water Pipe Design", page_icon="🚰", layout="wide")
 
@@ -17,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🚰 โปรแกรมช่วยออกแบบระบบท่อส่งน้ำ")
-st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — รองรับท่อเหล็กขนาด 2 ถึง 16 นิ้ว")
+st.markdown("**สำหรับอุตสาหกรรมน้ำดื่มและระบบสูบจ่ายน้ำ** — วิเคราะห์ System Curve และการเปลี่ยนแปลง Pressure")
 st.markdown("---")
 
 # ส่วนข้อมูลตั้งต้น
@@ -55,7 +56,7 @@ with col_in1:
 with col_in2:
     pipe_length = st.number_input("ความยาวท่อรวม (L) [เมตร]", value=100.0, min_value=0.1)
     delta_z = st.number_input("ความต่างระดับ (ΔZ) [เมตร]", value=10.0)
-    h_press = st.number_input("ความดันปลายทาง [เมตรน้ำ]", value=20.0)
+    h_press = st.number_input("ความดันปลายทางเป้าหมาย [เมตรน้ำ]", value=20.0)
 
 st.markdown("##### อุปกรณ์ประกอบท่อ (Fittings)")
 f1, f2, f3 = st.columns(3)
@@ -108,7 +109,7 @@ with res2:
     st.markdown(f"- **กำลังเพลาปั๊ม (Eff 75%):** {shaft_power:.2f} kW")
     st.markdown(f"- **ขนาดมอเตอร์แนะนำ:** **{motor_power_rec:.2f} kW**")
 
-# กราฟ (แก้ไขสมการ System & Pump Curve ให้ถูกต้องตามหลักฟิสิกส์)
+# กราฟ Pump & System Curve
 st.markdown("---")
 st.subheader("4. 📈 กราฟจุดทำงานของปั๊ม (Pump & System Curve)")
 
@@ -116,15 +117,10 @@ fig, ax = plt.subplots(figsize=(8, 4.5))
 max_flow_graph = max(q_m3h * 1.5, 50)
 flows = np.linspace(0, max_flow_graph, 100)
 
-# Static Head (ΔZ + H_pressure)
 static_head = delta_z + h_press
-
-# System Curve: H_system = Static Head + k * Q^1.852 (อิงตามสัดส่วนการสูญเสียที่ Q ปัจจุบัน)
 loss_coefficient = total_loss / (q_m3h ** 1.852) if q_m3h > 0 else 0
 system_head_curve = static_head + loss_coefficient * (flows ** 1.852)
 
-# Pump Curve: จำลองกราฟปั๊มให้ผ่านจุด Duty Point (q_m3h, tdh) พอดี
-# สมมติให้ Shut-off head อยู่ที่ประมาณ 1.3 ถึง 1.4 เท่าของ TDH
 shutoff_head = tdh * 1.35
 pump_head_curve = shutoff_head - (shutoff_head - tdh) * ((flows / q_m3h) ** 2)
 
@@ -140,6 +136,35 @@ ax.grid(True, linestyle="--", alpha=0.6)
 ax.legend()
 st.pyplot(fig)
 
+# 5. ตารางข้อมูลการเปลี่ยนแปลง Flow Rate กับ Pressure / Head
+st.markdown("---")
+st.subheader("5. 📋 ตารางแสดงการเปลี่ยนแปลง Pressure และ Head ตาม Flow Rate")
+st.markdown("ตารางจำลองพฤติกรรมระบบท่อ (System Performance Table) เมื่ออัตราการไหลเปลี่ยนแปลง:")
+
+table_flows = np.linspace(q_m3h * 0.2, q_m3h * 1.4, 7)
+table_data = []
+
+for f in table_flows:
+    # คำนวณความเร็วและ Head loss ที่ Flow นั้นๆ
+    v_t = (f / 3600.0) / area
+    maj_t = 10.67 * (f ** 1.852) * (d_mm ** -4.87) * (c_factor ** -1.852) * pipe_length
+    min_t = k_total * (v_t ** 2) / (2 * 9.81)
+    tot_loss_t = maj_t + min_t
+    sys_head_t = delta_z + h_press + tot_loss_t
+    # แปลง Head เป็น Pressure คร่าวๆ (Bar) โดยสมมติให้ 10.2 เมตรน้ำ = 1 Bar
+    pressure_bar = sys_head_t / 10.2
+    
+    table_data.append({
+        "Flow Rate (m³/h)": round(f, 2),
+        "Velocity (m/s)": round(v_t, 2),
+        "Total Head Loss (m)": round(tot_loss_t, 2),
+        "System Head / TDH (m)": round(sys_head_t, 2),
+        "Est. Pressure (bar)": round(pressure_bar, 2)
+    })
+
+df_result = pd.DataFrame(table_data)
+st.dataframe(df_result, use_container_width=True)
+
 # หลักการ
 st.markdown("---")
 st.subheader("6. 📚 หลักการคำนวณมาตรฐาน")
@@ -147,5 +172,5 @@ st.markdown("""
 - **ความเร็วในท่อ:** V = 4Q / (pi * D²)
 - **Hazen-Williams:** hf = 10.67 * Q^1.852 * D^-4.87 * C^-1.852 * L
 - **Minor Loss:** hm = K * V^2 / (2g)
-- **TDH:** ΔZ + H_pressure + hf + hm
+- **TDH & Pressure Variation:** แสดงความสัมพันธ์เชิงพลวัตระหว่างอัตราการไหลและการสูญเสียพลังงานในระบบ
 """)
